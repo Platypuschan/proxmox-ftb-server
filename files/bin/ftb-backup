@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""CLI for /usr/local/lib/ftb-minecraft/ftb_backup.py (see `ftb-backup --help`)."""
+import sys
+
+sys.path.insert(0, "/usr/local/lib/ftb-minecraft")
+import ftb_backup  # noqa: E402
+
+sys.exit(ftb_backup.main(sys.argv[1:]))

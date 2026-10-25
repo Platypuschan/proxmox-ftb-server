@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Runs the official FTB server installer for the pack in /opt/minecraft/ftb-pack.env.
+# Usage: ftb-install-pack <version-id>
+set -Eeuo pipefail
+source /opt/minecraft/ftb-pack.env
+version="${1:?version id}"
+case "$(dpkg --print-architecture)" in
+amd64) platform="linux" ;;
+arm64) platform="arm/linux" ;;
+*) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;;
+esac
+installer="$(mktemp /tmp/ftb-serverinstall.XXXXXX)"
+trap 'rm -f "$installer"' EXIT
+curl -fsSL --retry 3 -o "$installer" \
+  "https://api.feed-the-beast.com/v1/modpacks/public/modpack/${FTB_PACK_ID}/${version}/server/${platform}"
+chmod 755 "$installer"
+args=(-pack "$FTB_PACK_ID" -version "$version" -dir /opt/minecraft/server -auto -force -no-colours)
+[[ "$FTB_ACCEPT_EULA" == "yes" ]] && args+=(-accept-eula)
+chown minecraft:minecraft "$installer"
+cd /opt/minecraft/server
+runuser -u minecraft -- "$installer" "${args[@]}"
