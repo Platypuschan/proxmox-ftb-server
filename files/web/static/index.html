@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft-Server</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="title">
+        <span id="state-dot" class="dot"></span>
+        <div>
+          <h1 id="pack-name">Minecraft-Server</h1>
+          <p id="pack-meta" class="muted"></p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btn-start" data-action="start" class="primary">Starten</button>
+        <button id="btn-restart" data-action="restart">Neu starten</button>
+        <button id="btn-stop" data-action="stop" class="danger">Stoppen</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="status" aria-selected="true">Status</button>
+      <button role="tab" data-tab="backups" aria-selected="false">Backups</button>
+      <button role="tab" data-tab="modpack" aria-selected="false">Modpack <span id="m-badge" class="badge running" hidden>Update</span></button>
+      <button role="tab" data-tab="console" aria-selected="false">Konsole</button>
+    </nav>
+
+    <section id="job" class="card job" hidden>
+      <div class="job-head">
+        <strong id="job-title"></strong>
+        <span id="job-state" class="badge"></span>
+        <button id="job-close" class="ghost small" hidden>Schließen</button>
+      </div>
+      <pre id="job-output"></pre>
+    </section>
+
+    <section id="tab-status" class="tab">
+      <div class="grid">
+        <article class="card">
+          <h2>Server</h2>
+          <dl class="facts">
+            <dt>Zustand</dt><dd id="s-state">–</dd>
+            <dt>Laufzeit</dt><dd id="s-uptime">–</dd>
+            <dt>Minecraft</dt><dd id="s-version">–</dd>
+            <dt>MOTD</dt><dd id="s-motd">–</dd>
+            <dt>Port</dt><dd id="s-port">–</dd>
+            <dt>Antwortzeit</dt><dd id="s-latency">–</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <h2>Spieler <span id="p-count" class="count"></span></h2>
+          <ul id="p-list" class="players"></ul>
+          <p id="p-empty" class="muted">Niemand online.</p>
+        </article>
+        <article class="card">
+          <h2>Ressourcen</h2>
+          <div class="meter-row">
+            <span>CPU (Server)</span><span id="r-cpu-text">–</span>
+            <div class="meter"><div id="r-cpu"></div></div>
+          </div>
+          <div class="meter-row">
+            <span>RAM (Server)</span><span id="r-mem-text">–</span>
+            <div class="meter"><div id="r-mem"></div></div>
+          </div>
+          <div class="meter-row">
+            <span>Speicher</span><span id="r-disk-text">–</span>
+            <div class="meter"><div id="r-disk"></div></div>
+          </div>
+          <p id="r-load" class="muted"></p>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-backups" class="tab" hidden>
+      <div class="card">
+        <h2>Neues Backup</h2>
+        <form id="backup-form" class="inline-form">
+          <input id="backup-label" placeholder="Bezeichnung (optional), z. B. vor-boss" maxlength="32">
+          <button type="submit" class="primary">Backup erstellen</button>
+        </form>
+        <p id="b-provider" class="muted small-text"></p>
+        <form id="upload-form" class="inline-form">
+          <input id="upload-file" type="file" accept=".zip,application/zip">
+          <button type="submit">Backup hochladen</button>
+        </form>
+        <progress id="upload-progress" max="100" value="0" hidden></progress>
+      </div>
+      <div class="card">
+        <h2>Vorhandene Backups <span id="b-free" class="muted small-text"></span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Erstellt</th><th>Bezeichnung</th><th>Art</th><th>Größe</th><th></th></tr></thead>
+            <tbody id="b-list"></tbody>
+          </table>
+        </div>
+        <p id="b-empty" class="muted">Noch keine Backups.</p>
+      </div>
+    </section>
+
+    <section id="tab-modpack" class="tab" hidden>
+      <div class="card">
+        <h2>Modpack</h2>
+        <dl class="facts">
+          <dt>Pack</dt><dd id="m-name">–</dd>
+          <dt>Installiert</dt><dd id="m-current">–</dd>
+          <dt>Neueste Release</dt><dd id="m-latest">–</dd>
+        </dl>
+        <p id="m-error" class="error" role="alert"></p>
+        <div class="inline-form">
+          <button id="m-update-latest" class="primary" disabled>Auf neueste Release aktualisieren</button>
+          <button id="m-refresh" class="ghost">Neu prüfen</button>
+        </div>
+        <p class="muted small-text">Für ein Update wird der Server gestoppt, die Welt gesichert (Backup „pre-update“), das Modpack mit dem FTB-Installer umgestellt und der Server wieder gestartet. Die Minecraft-Version gibt das Modpack vor.</p>
+      </div>
+      <div class="card">
+        <h2>Bestimmte Version installieren</h2>
+        <form id="m-form" class="inline-form">
+          <select id="m-version" aria-label="Modpack-Version"></select>
+          <button type="submit">Installieren</button>
+        </form>
+        <p class="muted small-text">Auch Beta- und Alpha-Versionen sowie ältere Versionen. Ältere Versionen können mit der aktuellen Welt inkompatibel sein; das Backup davor bleibt erhalten.</p>
+      </div>
+    </section>
+
+    <section id="tab-console" class="tab" hidden>
+      <div class="card">
+        <pre id="log" class="log"></pre>
+        <form id="console-form" class="inline-form">
+          <input id="console-input" placeholder="Befehl, z. B. say Hallo oder op Spielername" autocomplete="off" maxlength="512">
+          <button type="submit" class="primary">Senden</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="confirm">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost">Abbrechen</button>
+        <button value="ok" id="confirm-ok" class="danger">OK</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

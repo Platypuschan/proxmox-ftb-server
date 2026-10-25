@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Test stub for `pvesm status -content <type>` (sizes in KiB, like pvesm).
+# PVE_STUB_EXTRA_STORAGE=name adds a second rootdir storage.
+set -euo pipefail
+[[ "${1:-}" == "status" && "${2:-}" == "-content" ]] || { echo "pvesm stub: unsupported $*" >&2; exit 1; }
+echo "Name             Type     Status           Total            Used       Available        %"
+case "${3:-}" in
+rootdir)
+  echo "local-lvm     lvmthin     active       104857600         1048576       103809024    1.00%"
+  if [[ -n "${PVE_STUB_EXTRA_STORAGE:-}" ]]; then
+    echo "${PVE_STUB_EXTRA_STORAGE}       zfspool     active       209715200         1048576       208666624    0.50%"
+  fi
+  echo "offline-nfs       nfs   inactive               0               0               0    0.00%"
+  ;;
+vztmpl)
+  echo "local             dir     active        52428800         1048576        51380224    2.00%"
+  ;;
+esac

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+cd /opt/minecraft/server || exit 1
+if [[ -f run.sh ]]; then
+  exec sh ./run.sh
+elif [[ -f start.sh ]]; then
+  exec sh ./start.sh
+fi
+echo "Neither run.sh nor start.sh found in /opt/minecraft/server" >&2
+exit 1
