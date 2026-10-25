@@ -1,0 +1,15 @@
+# Files installed into the container, relative to files/.
+# The install script takes them from the bundle the host passes in, or
+# downloads them from ${COMMUNITY_SCRIPTS_URL}/files/<path>.
+bin/ftb-backup
+bin/ftb-heap
+bin/ftb-install-pack
+bin/ftb-start
+bin/ftb-update
+bin/mc-cmd
+lib/ftb_backup.py
+web/ftb-web.py
+web/static/index.html
+web/static/app.css
+web/static/app.js
+web/static/favicon.svg

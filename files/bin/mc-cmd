@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Sends a command to the server console, e.g. "mc-cmd say hello" or "mc-cmd op <player>".
+[[ $# -gt 0 ]] || { echo "Usage: mc-cmd <minecraft command>" >&2; exit 1; }
+systemctl is-active -q minecraft || { echo "minecraft.service is not running" >&2; exit 1; }
+echo "$*" >/run/minecraft.stdin
+sleep 1
+journalctl -u minecraft -n 5 --no-pager -o cat

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Updates the FTB modpack to the latest release, or to the given version id.
+# Usage: ftb-update [version-id]
+set -Eeuo pipefail
+source /opt/minecraft/ftb-pack.env
+exec 9>/run/ftb-backup.lock
+flock -n 9 || {
+  echo "Another backup, restore or update is running" >&2
+  exit 1
+}
+api="https://api.feed-the-beast.com/v1/modpacks/public/modpack/${FTB_PACK_ID}"
+pack_json="$(curl -fsSL --retry 3 "$api")"
+if [[ -n "${1:-}" ]]; then
+  target="$1"
+else
+  target="$(jq -r '[.versions[] | select(.type == "release")] | max_by(.id) // empty | .id' <<<"$pack_json")"
+fi
+name="$(jq -r --arg v "$target" '.versions[] | select((.id | tostring) == $v) | .name' <<<"$pack_json")"
+if [[ -z "$name" ]]; then
+  echo "Version '${target}' does not exist for ${FTB_PACK_NAME}" >&2
+  exit 1
+fi
+if [[ "$target" == "$FTB_VERSION_ID" ]]; then
+  echo "${FTB_PACK_NAME} is already on version ${name} (${target})"
+  exit 0
+fi
+echo "Updating ${FTB_PACK_NAME} from ${FTB_VERSION_ID} to ${name} (${target})"
+systemctl stop minecraft
+FTB_LOCK_HELD=1 /usr/local/bin/ftb-backup create pre-update
+/usr/local/bin/ftb-install-pack "$target"
+sed -i "s/^FTB_VERSION_ID=.*/FTB_VERSION_ID=${target}/" /opt/minecraft/ftb-pack.env
+systemctl start minecraft
+echo "Updated ${FTB_PACK_NAME} to ${name}"
