@@ -53,12 +53,12 @@ erhalten. Das vollständige Protokoll liegt unter
 
 ## Benutzung
 
-Auf dem Proxmox-Host als root, aus einem Checkout dieses Repositories (privat
-in Gitea, also mit Anmeldung klonen oder als Archiv herunterladen):
+Auf dem Proxmox-Host als root, aus einem Checkout dieses Repositories:
 
 ```bash
-git clone <repo-url> proxmox-ftb-minecraft
-cd proxmox-ftb-minecraft
+apt install -y git    # falls git fehlt
+git clone https://github.com/Platypuschan/proxmox-ftb-server.git
+cd proxmox-ftb-server
 bash ct/ftb-minecraft.sh
 ```
 
