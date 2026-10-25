@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Test stub for `pveam update | available -section system | list <storage> | download <storage> <template>`.
+set -euo pipefail
+state="${PVE_STUB_STATE:?}"
+mkdir -p "$state/templates"
+case "${1:-}" in
+update) echo "update successful" ;;
+available)
+  printf 'system          %s\n' debian-12-standard_12.12-1_amd64.tar.zst debian-13-standard_13.1-1_amd64.tar.zst \
+    debian-13-standard_13.1-2_amd64.tar.zst ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+  ;;
+list)
+  echo "NAME                                                         SIZE"
+  for t in "$state"/templates/*; do
+    [[ -f "$t" ]] && printf '%s:vztmpl/%s   123.45MB\n' "${2:?}" "${t##*/}"
+  done
+  ;;
+download)
+  echo "downloading ${3:?} to ${2:?}"
+  touch "$state/templates/$3"
+  echo "$3" >>"$state/downloads"
+  ;;
+*)
+  echo "pveam stub: unsupported $*" >&2
+  exit 1
+  ;;
+esac

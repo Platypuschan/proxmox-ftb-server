@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Test stub for `pvesh get /cluster/nextid [--vmid N]`.
+set -euo pipefail
+state="${PVE_STUB_STATE:?}"
+[[ "${1:-}" == "get" && "${2:-}" == "/cluster/nextid" ]] || { echo "pvesh stub: unsupported $*" >&2; exit 1; }
+if [[ "${3:-}" == "--vmid" ]]; then
+  [[ -f "$state/${4}.args" ]] && { echo "VM ${4} already exists" >&2; exit 1; }
+  echo "$4"
+  exit 0
+fi
+id=9100
+while [[ -f "$state/${id}.args" ]]; do id=$((id + 1)); done
+echo "$id"

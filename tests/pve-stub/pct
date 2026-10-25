@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Test stub for Proxmox `pct`: containers are podman containers named
+# ftb-pve-<id> built from $PVE_STUB_IMAGE (Debian 13 with systemd).
+# Arguments of `pct create` are recorded in $PVE_STUB_STATE/<id>.args.
+set -euo pipefail
+state="${PVE_STUB_STATE:?}"
+cmd="${1:?}"
+shift
+id="${1:-}"
+name="ftb-pve-${id}"
+
+exists() { [[ -f "$state/${id}.args" ]]; }
+
+case "$cmd" in
+create)
+  shift
+  template="${1:?template}"
+  shift
+  exists && { echo "CT ${id} already exists" >&2; exit 1; }
+  [[ -f "$state/templates/${template#*:vztmpl/}" ]] || { echo "template ${template} not found" >&2; exit 1; }
+  printf '%s\n' "$template" "$@" >"$state/${id}.args"
+  hostname="ct${id}"
+  args=("$@")
+  for ((i = 0; i < ${#args[@]}; i++)); do
+    [[ "${args[i]}" == "--hostname" ]] && hostname="${args[i + 1]}"
+  done
+  podman create --name "$name" --systemd=always --hostname "$hostname" \
+    -p "${PVE_STUB_WEB_PORT:-18080}:8080" "${PVE_STUB_IMAGE:?}" >/dev/null
+  ;;
+start) podman start "$name" >/dev/null ;;
+stop) podman stop -t 10 "$name" >/dev/null ;;
+destroy)
+  podman rm -f "$name" >/dev/null 2>&1 || true
+  rm -f "$state/${id}".*
+  ;;
+status)
+  exists || { echo "Configuration file 'nodes/pve/lxc/${id}.conf' does not exist" >&2; exit 2; }
+  echo "status: $(podman inspect -f '{{.State.Status}}' "$name")"
+  ;;
+exec)
+  shift
+  [[ "${1:-}" == "--" ]] && shift
+  exec podman exec -i "$name" "$@"
+  ;;
+push)
+  [[ -n "${PVE_STUB_FAIL_PUSH:-}" ]] && { echo "push failed (stub)" >&2; exit 1; }
+  podman cp "${2:?src}" "${name}:${3:?dst}"
+  ;;
+set)
+  shift
+  [[ "${1:-}" == "--description" ]] && printf '%s\n' "${2:-}" >"$state/${id}.description"
+  ;;
+*)
+  echo "pct stub: unsupported command ${cmd}" >&2
+  exit 1
+  ;;
+esac

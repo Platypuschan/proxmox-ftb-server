@@ -2,47 +2,59 @@
 
 Erstellt auf einem Proxmox-VE-Host einen LXC-Container mit einem
 Minecraft-Server für ein beliebiges [Feed-The-Beast-Modpack](https://www.feed-the-beast.com/modpacks/server-files/linux).
-Aufbau und Bedienung folgen den [community-scripts](https://community-scripts.org/):
-gleiches Framework (`community-scripts/core`), gleiche Standard-/Erweitert-Dialoge,
-gleiche `var_*`-Einstellungen. Installiert wird der Server mit dem offiziellen
-FTB-Server-Installer.
+Der Server wird mit dem offiziellen FTB-Server-Installer eingerichtet und über
+eine Web-Oberfläche bedient.
+
+Das Script läuft **eigenständig**. Es nutzt nur die Werkzeuge, die jeder
+Proxmox-VE-Host mitbringt (`pct`, `pvesm`, `pveam`, `pvesh`, `whiptail`,
+`perl`, `curl`). Ein fremdes Framework wird nicht geladen, und es gibt weder
+Telemetrie noch Statusabfragen an Dritte.
 
 ## Ablauf
 
-1. **Host (`ct/ftb-minecraft.sh`)**: lädt die Modpack-Liste über die FTB-API.
-   Nach der Auswahl von Pack und Version (Standard: neueste Release) wird der
-   Container passend zum Pack dimensioniert:
-   - **Arbeitsspeicher (RAM) des Containers** = von FTB empfohlener Java-Heap +
-     1536 MiB für die JVM außerhalb des Heaps, aufgerundet auf 512 MiB. Beispiel
-     FTB Evolution 2: 8192 + 1536 → 9728 MiB.
-   - **Speicherplatz (Root-Disk) des Containers** = 2 × Downloadgröße der
-     Server-Dateien + 10 GB für Welt, Backups, Java und Modloader, mindestens
-     16 GB.
-   - **Hostname** `ftb-<pack>`. CPU-Kerne: 4.
+1. **Prüfen:** root, Proxmox VE 8 oder neuer, amd64, alle Werkzeuge vorhanden,
+   vollständiger Checkout (`install/` und `files/` neben `ct/`).
+2. **Modpack wählen:** Die Liste kommt von der FTB-API, danach folgt die
+   Version (Vorauswahl: neueste Release). Die Minecraft-EULA wird automatisch
+   akzeptiert (https://www.minecraft.net/eula).
+3. **Container dimensionieren** aus der Empfehlung des Packs:
+   - **Arbeitsspeicher (RAM)** = empfohlener Java-Heap + 1536 MiB für die JVM
+     außerhalb des Heaps, aufgerundet auf 512 MiB. Beispiel FTB Evolution 2:
+     8192 + 1536 → 9728 MiB.
+   - **Speicherplatz (Root-Disk)** = 2 × Downloadgröße der Server-Dateien +
+     10 GB für Welt, Backups, Java und Modloader, mindestens 16 GB.
+   - **Hostname** `ftb-<pack>`, 4 CPU-Kerne, nächste freie Container-ID, DHCP
+     auf `vmbr0`.
+4. **Einstellungen:** Mit „Standard“ werden die Werte übernommen. „Erweitert“
+   fragt jeden Wert einzeln ab: ID, Hostname, CPU, RAM, Disk, Storage, Bridge,
+   IPv4 statisch oder DHCP, Gateway, VLAN, Root-Passwort, SSH-Schlüssel und
+   Autostart. Danach folgt eine Bestätigung.
+5. **Template:** Das neueste `debian-13-standard` wird genommen, wenn es auf
+   dem Template-Storage liegt. Sonst lädt `pveam` es herunter.
+6. **Container anlegen:** mit `pct create` (unprivilegiert, `nesting=1`,
+   Zeitzone des Hosts, Tags `gaming;minecraft`), dann starten und auf das
+   Netzwerk warten.
+7. **Installieren:** `install/` und `files/` gehen per `pct push` als Tarball
+   in den Container. `install/ftb-minecraft-install.sh` läuft per `pct exec`:
+   - OS-Update
+   - Benutzer `minecraft`
+   - FTB-Installer (`-pack -version -auto -force -accept-eula`), der Java
+     8–25 und den Modloader (Forge, NeoForge, Fabric) selbst mitbringt
+   - systemd-Dienst mit Konsole als FIFO
+   - Web-Oberfläche
+   - ohne Root-Passwort: automatischer root-Login auf der Proxmox-Konsole
+8. **Proxmox-Notizen** (Adressen, Pack, Version) setzen und die Adressen
+   ausgeben.
 
-   Alle Werte lassen sich im Erweitert-Dialog oder per `var_*` überschreiben.
-   Die Minecraft-EULA wird dabei automatisch akzeptiert
-   (https://www.minecraft.net/eula).
-2. **Container (`install/ftb-minecraft-install.sh`)** auf Debian 13:
-   - lädt den FTB-Installer für Pack und Version
-     (`api.feed-the-beast.com/v1/modpacks/public/modpack/<pack>/<version>/server/linux`)
-     und führt ihn unbeaufsichtigt als Benutzer `minecraft` aus:
-     `-pack -version -dir /opt/minecraft/server -auto -force [-accept-eula]`
-   - Der Installer bringt die passende Java-Version (8 bis 25) unter
-     `server/jre/` und den Modloader (Forge, NeoForge, Fabric) selbst mit. Java
-     aus apt wird nicht gebraucht.
-   - legt `minecraft.service` und `minecraft.socket` an. Die Konsole ist eine
-     FIFO, daher braucht es weder screen noch tmux.
-   - richtet die Web-Oberfläche `ftb-web.service` ein (siehe unten).
-
-Helfer-Scripts und Web-Oberfläche liegen unter `files/`. Läuft das Script aus
-einem lokalen Checkout, gehen sie als base64-Tarball über die Umgebung in den
-Container. Sonst lädt der Container sie anhand von `files/MANIFEST` von
-`COMMUNITY_SCRIPTS_URL`.
+Bricht etwas nach dem Anlegen ab, fragt das Script, ob der halbfertige
+Container entfernt werden soll. Ohne Terminal bleibt er zur Fehlersuche
+erhalten. Das vollständige Protokoll liegt unter
+`/var/log/ftb-minecraft/create-<datum>.log`.
 
 ## Benutzung
 
-Auf dem Proxmox-Host als root:
+Auf dem Proxmox-Host als root, aus einem Checkout dieses Repositories (privat
+in Gitea, also mit Anmeldung klonen oder als Archiv herunterladen):
 
 ```bash
 git clone <repo-url> proxmox-ftb-minecraft
@@ -50,23 +62,50 @@ cd proxmox-ftb-minecraft
 bash ct/ftb-minecraft.sh
 ```
 
-Das Framework erkennt den lokalen Checkout und nimmt `install/` aus demselben
-Verzeichnis. Den Kern (`community-scripts/core`) lädt es von GitHub.
-
-Unbeaufsichtigt, z. B. für mehrere Server:
+Ohne Dialoge, z. B. für mehrere Server oder per Automatisierung:
 
 ```bash
-FTB_PACK_ID=128 bash ct/ftb-minecraft.sh                                   # neueste Release
-FTB_PACK_ID=35 FTB_VERSION_ID=12180 var_ram=8192 bash ct/ftb-minecraft.sh
+FTB_PACK_ID=128 FTB_UNATTENDED=1 bash ct/ftb-minecraft.sh
+FTB_PACK_ID=134 FTB_UNATTENDED=1 var_ram=12288 var_disk=40 var_net=192.0.2.50/24 var_gateway=192.0.2.1 bash ct/ftb-minecraft.sh
 ```
 
-| Variable | Bedeutung |
-| --- | --- |
-| `FTB_PACK_ID` | Pack-ID (Spalte „#“ auf der FTB-Server-Files-Seite). Ohne Angabe erscheint ein Auswahlmenü. |
-| `FTB_VERSION_ID` | Versions-ID. Ohne Angabe wird die neueste Release genommen. |
-| `FTB_RAM_RESERVE` | RAM außerhalb des Java-Heaps in MiB (Standard 1536) |
-| `FTB_WEB_PORT` | Port der Web-Oberfläche (Standard 8080) |
-| `var_cpu`, `var_ram`, `var_disk`, `var_hostname`, … | die üblichen community-scripts-Einstellungen |
+## Einstellungen
+
+| Variable | Bedeutung | Standard |
+| --- | --- | --- |
+| `FTB_PACK_ID` | Pack-ID (Spalte „#“ auf der FTB-Server-Files-Seite) | Auswahlmenü |
+| `FTB_VERSION_ID` | Versions-ID | neueste Release |
+| `FTB_UNATTENDED=1` | keine Dialoge (ohne Terminal automatisch) | – |
+| `var_ctid` | Container-ID | nächste freie |
+| `var_hostname` | Hostname | `ftb-<pack>` |
+| `var_cpu` | CPU-Kerne | 4 |
+| `var_ram` | RAM in MiB | aus der Pack-Empfehlung |
+| `var_disk` | Root-Disk in GB | aus der Downloadgröße |
+| `var_container_storage` | Storage für die Root-Disk | `local-lvm`, `local-zfs` oder `local` |
+| `var_template_storage` | Storage für das Template | `local` |
+| `var_brg` | Bridge | `vmbr0` |
+| `var_net` | `dhcp` oder IPv4/Präfix | `dhcp` |
+| `var_gateway` | Gateway bei statischer IP | – |
+| `var_vlan` | VLAN-Tag | – |
+| `var_pw` | Root-Passwort (sonst automatischer Konsolen-Login) | – |
+| `var_ssh_authorized_key` | öffentlicher SSH-Schlüssel für root | – |
+| `var_onboot` | Autostart mit dem Host (`1`/`0`) | `1` |
+| `FTB_RAM_RESERVE` | RAM außerhalb des Java-Heaps in MiB | 1536 |
+| `FTB_WEB_PORT` | Port der Web-Oberfläche | 8080 |
+| `FTB_VERBOSE=1` | Ausgabe aller Schritte im Terminal statt nur im Log | – |
+| `FTB_LOG_DIR` | Verzeichnis für das Protokoll | `/var/log/ftb-minecraft` |
+
+## Externe Verbindungen
+
+- **Host:**
+  - `api.feed-the-beast.com` für Pack-Liste und Versionen
+  - der Proxmox-Template-Spiegel über `pveam`, nur wenn das Template fehlt
+- **Container:**
+  - Debian-Spiegel
+  - FTB-API und FTB-Download-Server
+  - die Server von Mojang und vom Modloader (beim Installieren und bei
+    Updates)
+  - die FTB-API aus der Web-Oberfläche für den Modpack-Tab
 
 ## Web-Oberfläche
 
@@ -158,48 +197,48 @@ einem Neustart des Dienstes. Port: 25565/TCP.
 
 ## Recherche: Möglichkeiten
 
+Die erste Version baute auf dem Framework der [community-scripts](https://community-scripts.org/) auf. Seit dem Umbau läuft das Script eigenständig, weil das Framework zur Laufzeit von GitHub nachgeladen wurde, nicht festgelegt war und eine Statusabfrage an community-scripts.org schickte.
+
 | Ansatz | Bewertung |
 | --- | --- |
 | **FTB-Server-Installer im LXC (gewählt)** | Offiziell von FTB, ein statisches Go-Binary. Die Flags (`-pack`, `-version`, `-auto`, `-force`, `-accept-eula`, `-dir`) erlauben vollautomatische Installation und Updates. Java und Modloader bringt er selbst mit. Läuft direkt im LXC, ohne Docker-Schicht. |
 | FTB-API direkt (eigener Downloader) | Möglich (Dateiliste mit Hashes unter `/modpack/<id>/<version>`). Der Modloader-Install (Forge-/NeoForge-Prozessoren) müsste aber nachgebaut werden, und genau das übernimmt der Installer. |
-| [itzg/minecraft-server](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/ftb/) mit `TYPE=FTBA` | Gut, braucht aber Docker im LXC (nesting) oder eine VM, also eine zusätzliche Schicht. Passt nicht zum community-scripts-Modell (nativ im LXC). |
-| Crafty Controller / Pterodactyl (gibt es als community-scripts) | Web-Panels für viele Server. Das FTB-Pack muss dort trotzdem von Hand eingerichtet werden (Pterodactyl über das FTB-Egg). Lohnt sich bei vielen Servern mit Weboberfläche, ist aber kein „ein Pack = ein Container“-Automatismus. |
+| [itzg/minecraft-server](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/ftb/) mit `TYPE=FTBA` | Gut, braucht aber Docker im LXC (nesting) oder eine VM, also eine zusätzliche Schicht. Das Ziel ist ein Server nativ im LXC. |
+| Crafty Controller / Pterodactyl | Web-Panels für viele Server. Das FTB-Pack muss dort trotzdem von Hand eingerichtet werden (Pterodactyl über das FTB-Egg). Lohnt sich bei vielen Servern mit Weboberfläche, ist aber kein „ein Pack = ein Container“-Automatismus. |
 | Alpine statt Debian als Container-OS | Verworfen. Das Java, das der FTB-Installer mitbringt (Java 8 bis 25), ist gegen glibc gelinkt (`/lib64/ld-linux-x86-64.so.2`), Alpine nutzt musl. Es liefe nur mit `gcompat` oder einem Alpine-eigenen JDK, das die Pfade in `run.sh`/`start.sh` umgeht. Native Bibliotheken mancher Mods setzen ebenfalls glibc voraus. Dienst, Konsole und Log hängen an systemd und journald und müssten für OpenRC neu gebaut werden. Ersparnis: gut 100 MB Disk und einige Dutzend MB RAM, bei 6 bis 10 GB Java-Heap vernachlässigbar. |
 
 ## Getestet
 
 - `tests/lint.sh`:
-  - `bash -n` und shellcheck für alle Shell-Scripts
-  - Syntaxprüfung für Python und JavaScript
-  - Abgleich von `files/MANIFEST` mit den vorhandenen Dateien
+  - `bash -n` und shellcheck für alle Shell-Scripts und Test-Stubs
+  - Syntax von Python und JavaScript, Prüfungen für Index-Parser und
+    Job-Filter
+  - Prüfung, dass `ct/`, `install/` und `files/` keine community-scripts
+    mehr referenzieren
 - `tests/host-select.sh`: Pack- und Versionsauswahl und Dimensionierung gegen
-  die echte FTB-API. Geprüft wurden NeoForge (MC 26.1.2), Forge 1.12.2 (Java 8)
-  und Fabric sowie die Fehlerfälle (fremde Version, unbekanntes Pack,
-  nicht-numerische ID).
-- `tests/container-install.sh`: Install-Script in einem Debian-13-Container mit
-  systemd (podman) als Ersatz für den LXC:
-  1. ältere Version installieren
-  2. Server-Start bis „Done“
-  3. `mc-cmd`
-  4. API-Test der Web-Oberfläche (`tests/web-api-check.sh`):
-     - Status mit Server List Ping und Konsole
-     - Erkennung des Backup-Mods
-     - Backup im laufenden Betrieb über den Mod, mit Archiv im Ordner und
-       Eintrag im Index des Mods
-     - Backups des Mods erscheinen in der Oberfläche
-     - Herunterladen, Löschen (auch aus dem Index) und Hochladen
-     - Archive mit `../` oder ohne Welt werden abgelehnt
-     - Einspielen mit `pre-restore`-Backup
-     - Backup bei gestopptem Server: Der Mod behält den Eintrag nach seinem
-       nächsten eigenen Backup
-     - Stopp und Start
-  5. Modpack-Update über die Web-Oberfläche auf die neueste Release, mit
-     `pre-update`-Backup
-  6. sauberer Stopp
+  die echte FTB-API. Geprüft wurden NeoForge (MC 26.1.2), Forge 1.12.2
+  (Java 8), Fabric und vier Fehlerfälle.
+- `tests/host-e2e.sh`: Das echte `ct/ftb-minecraft.sh` läuft gegen Stubs der
+  Proxmox-Werkzeuge in `tests/pve-stub`. Container sind dabei podman-Container
+  mit Debian 13 und systemd.
+  - **A, ohne Dialoge:**
+    1. Template laden.
+    2. `pct create`-Argumente prüfen.
+    3. Installieren.
+    4. Den API-Test der Web-Oberfläche laufen lassen (`tests/web-api-check.sh`):
+       - Status und Konsole
+       - Backups über den FTB-Backups-Mod, Einspielen, Hochladen
+       - Modpack-Update über die Oberfläche
+    5. Sauber stoppen.
+  - **B, alle Dialoge durchgespielt:** „Erweitert“ mit statischer IP,
+    Gateway, VLAN, Passwort, SSH-Schlüssel, zweitem Storage und ohne
+    Autostart, danach eine vollständige Installation.
+  - **C, Fehler vor dem Anlegen:** ungültige ID, zu wenig RAM, inaktiver
+    Storage. Es entsteht kein Container.
+  - **D, Fehler nach dem Anlegen:** Der Container bleibt mit Hinweis und
+    Log-Pfad erhalten.
 
-  Aufruf: `tests/container-install.sh <pack-id> <v2|v3|own>`. Mit `KEEP=1`
-  bleibt der Container danach laufen, die Web-Oberfläche ist dann unter
-  `http://localhost:18080` erreichbar.
+  Aufruf: `tests/host-e2e.sh <pack-id> <v2|v3|own> [pack-id-für-B]`.
 
 Manuell geprüft wurden außerdem die Startlayouts des Installers: `run.sh` mit
 `user_jvm_args.txt` (Forge/NeoForge ab 1.17) sowie `start.sh` mit
@@ -207,24 +246,20 @@ eingebettetem `-Xmx` (altes Forge, Fabric).
 
 ## Einschränkungen
 
-- **Noch nicht auf einem echten Proxmox-Host gelaufen.** Der Host-Teil
-  (`build_container` des Frameworks) ist ungetestet, getestet sind nur die
-  Auswahllogik und der Container-Teil.
+- **Noch nicht auf einem echten Proxmox-Host gelaufen.**
+  - In den Tests sind `pct`, `pvesm`, `pveam`, `pvesh` und `whiptail`
+    nachgebildet, und podman ersetzt LXC.
+  - Echte Proxmox-Eigenheiten sind deshalb ungetestet: unprivilegiertes
+    LXC, AppArmor, die Storage-Typen, die Konsole und das Autologin.
+- Nur amd64-Hosts. Proxmox liefert die Debian-Templates nur für amd64.
 - Es gibt keinen `update`-Befehl im Container. Das Modpack wird in der
   Web-Oberfläche (Tab „Modpack“) oder mit `ftb-update` aktualisiert. Neue
   Versionen der Helfer und der Web-Oberfläche selbst kommen nur mit einem neu
   erstellten Container.
-- Telemetrie an die community-scripts ist abgeschaltet (`DIAGNOSTICS=no`). Die
-  Diagnose-Frage des Frameworks wird übersprungen, die hostweite Einstellung
-  für andere community-scripts (`/usr/local/community-scripts/diagnostics`)
-  bleibt unverändert.
 - Die Spielernamen in der Statusanzeige sind nur ohne verbundene Spieler
-  getestet (0/20). Ein Client-Login auf einen Modpack-Server ließ sich im Test
-  nicht nachstellen. Der Fallback über `list` bei mehr als 12 Spielern ist
+  getestet (0/20). Der Fallback über `list` bei mehr als 12 Spielern ist
   ebenfalls ungetestet.
 - Die Web-Oberfläche hat keine Anmeldung und läuft als root. Sie gehört nur
   ins lokale Netz, also den Port nicht nach außen freigeben.
 - Nur öffentliche FTB-Packs. Für private Packs bräuchte der Installer
   `-apikey`.
-- arm64 nutzt den ARM-Build des Installers (`server/arm/linux`). Das ist
-  ungetestet.
