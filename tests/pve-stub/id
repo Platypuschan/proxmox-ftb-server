@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test stub: `id -u` reports root, so the root check passes without running the test as root.
+if [[ "${1:-}" == "-u" ]]; then
+  echo 0
+else
+  exec /usr/bin/id "$@"
+fi

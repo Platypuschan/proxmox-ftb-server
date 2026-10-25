@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Test stub for whiptail: answers come from $PVE_STUB_WHIPTAIL, one line per
+# dialog: "ok <value>", "yes", "no" or "cancel". The dialog title is logged to
+# $PVE_STUB_STATE/whiptail.log. Like whiptail, the answer goes to stderr.
+set -euo pipefail
+answers="${PVE_STUB_WHIPTAIL:?}"
+title="?"
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [[ "${args[i]}" == "--title" ]] && title="${args[i + 1]}"
+done
+line="$(head -n 1 "$answers")"
+[[ -n "$line" ]] || { echo "whiptail stub: no answer left for '${title}'" >&2; exit 255; }
+sed -i '1d' "$answers"
+echo "${title} -> ${line}" >>"${PVE_STUB_STATE:?}/whiptail.log"
+case "$line" in
+yes) exit 0 ;;
+no | cancel) exit 1 ;;
+"ok "*) printf '%s' "${line#ok }" >&2 ;;
+ok) ;;
+*) echo "whiptail stub: bad answer '${line}'" >&2; exit 255 ;;
+esac

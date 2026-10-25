@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Sets the JVM heap from the container's memory, so a RAM change in Proxmox
+# takes effect on the next restart. Handles both launcher layouts the FTB
+# installer produces: run.sh + user_jvm_args.txt (Forge/NeoForge 1.17+) and
+# start.sh with an inline -Xmx (older Forge, Fabric).
+set -Eeuo pipefail
+source /opt/minecraft/ftb-pack.env
+cd /opt/minecraft/server
+total_mb=$(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024))
+heap_mb=$((total_mb - ${FTB_RAM_RESERVE:-1536}))
+((heap_mb < 1024)) && heap_mb=1024
+if [[ -f user_jvm_args.txt ]]; then
+  sed -i '/^-Xmx/d' user_jvm_args.txt
+  [[ -n "$(tail -c1 user_jvm_args.txt)" ]] && echo >>user_jvm_args.txt
+  echo "-Xmx${heap_mb}M" >>user_jvm_args.txt
+elif [[ -f start.sh ]]; then
+  sed -i -E "s/-Xmx[0-9]+[KkMmGg]?/-Xmx${heap_mb}M/" start.sh
+fi
+echo "JVM heap set to ${heap_mb} MiB (container memory ${total_mb} MiB)"
